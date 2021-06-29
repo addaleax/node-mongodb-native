@@ -111,7 +111,7 @@ export function resolveSRVRecord(options: MongoOptions, callback: Callback<HostA
         const txtRecordOptionKeys = [...txtRecordOptions.keys()];
         if (txtRecordOptionKeys.some(key => !VALID_TXT_RECORDS.includes(key))) {
           return callback(
-            new MongoParseError(`Text record must only set one of: ${VALID_TXT_RECORDS.join(', ')}`)
+            new MongoParseError(`Text record may only set any of: ${VALID_TXT_RECORDS.join(', ')}`)
           );
         }
 

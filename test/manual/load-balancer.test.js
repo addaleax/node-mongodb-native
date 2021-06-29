@@ -4,6 +4,7 @@ const { runUnifiedTest } = require('../functional/unified-spec-runner/runner');
 const { expect } = require('chai');
 
 describe('Load Balancer Spec Unified Tests', function () {
+  this.timeout(5000);
   for (const loadBalancerTest of loadSpecTests('load-balancers')) {
     expect(loadBalancerTest).to.exist;
     context(String(loadBalancerTest.description), function () {

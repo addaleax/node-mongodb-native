@@ -153,7 +153,7 @@ export class Server extends TypedEventEmitter<ServerEvents> {
       this.clusterTime = clusterTime;
     });
 
-    if (!this.s.options.loadBalanced) {
+    if (!this.loadBalanced) {
       // create the monitor
       this[kMonitor] = new Monitor(this, this.s.options);
 
@@ -216,7 +216,7 @@ export class Server extends TypedEventEmitter<ServerEvents> {
     // If in load balancer mode we automatically set the server to
     // a load balancer. It never transitions out of this state and
     // has no monitor.
-    if (!this.s.options.loadBalanced) {
+    if (!this.loadBalanced) {
       this[kMonitor].connect();
     } else {
       stateTransition(this, STATE_CONNECTED);
@@ -257,7 +257,7 @@ export class Server extends TypedEventEmitter<ServerEvents> {
    * this will be a no-op.
    */
   requestCheck(): void {
-    if (!this.s.options.loadBalanced) {
+    if (!this.loadBalanced) {
       this[kMonitor].requestCheck();
     }
   }
@@ -440,18 +440,23 @@ function calculateRoundTripTime(oldRtt: number, duration: number): number {
 }
 
 function markServerUnknown(server: Server, error?: MongoError) {
-  if (error instanceof MongoNetworkError && !(error instanceof MongoNetworkTimeoutError)) {
-    server[kMonitor].reset();
-  }
+  // Load balancer servers can never be marked unknown.
+  if (!server.loadBalanced) {
+    if (error instanceof MongoNetworkError && !(error instanceof MongoNetworkTimeoutError)) {
+      server[kMonitor].reset();
+    }
 
-  server.emit(
-    Server.DESCRIPTION_RECEIVED,
-    new ServerDescription(server.description.hostAddress, undefined, {
-      error,
-      topologyVersion:
-        error && error.topologyVersion ? error.topologyVersion : server.description.topologyVersion
-    })
-  );
+    server.emit(
+      Server.DESCRIPTION_RECEIVED,
+      new ServerDescription(server.description.hostAddress, undefined, {
+        error,
+        topologyVersion:
+          error && error.topologyVersion
+            ? error.topologyVersion
+            : server.description.topologyVersion
+      })
+    );
+  }
 }
 
 function connectionIsStale(pool: ConnectionPool, connection: Connection) {

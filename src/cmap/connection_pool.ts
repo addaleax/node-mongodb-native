@@ -43,6 +43,8 @@ const kWaitQueue = Symbol('waitQueue');
 const kCancelled = Symbol('cancelled');
 /** @internal */
 const kMetrics = Symbol('metrics');
+/** @internal */
+const kCheckedOut = Symbol('checkedOut');
 
 /** @public */
 export interface ConnectionPoolOptions extends Omit<ConnectionOptions, 'id' | 'generation'> {
@@ -68,7 +70,6 @@ export interface WaitQueueMember {
 /** @public */
 export interface CloseOptions {
   force?: boolean;
-  serviceId?: ObjectId;
 }
 
 /** @public */
@@ -120,6 +121,8 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
   [kWaitQueue]: Denque<WaitQueueMember>;
   /** @internal */
   [kMetrics]: Metrics;
+  /** @internal */
+  [kCheckedOut]: number;
 
   /**
    * Emitted when the connection pool is created.
@@ -205,6 +208,7 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
     this[kCancellationToken].setMaxListeners(Infinity);
     this[kWaitQueue] = new Denque();
     this[kMetrics] = new Metrics();
+    this[kCheckedOut] = 0;
 
     process.nextTick(() => {
       this.emit(ConnectionPool.CONNECTION_POOL_CREATED, new ConnectionPoolCreatedEvent(this));
@@ -242,6 +246,10 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
 
   get serviceGenerations(): Map<ObjectId, number> {
     return this[kServiceGenerations];
+  }
+
+  get currentCheckedOutCount(): number {
+    return this[kCheckedOut];
   }
 
   markPinned(connection: Connection, pinType: string): void {
@@ -320,6 +328,7 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
       this[kConnections].push(connection);
     }
 
+    this[kCheckedOut] -= 1;
     this.emit(ConnectionPool.CONNECTION_CHECKED_IN, new ConnectionCheckedInEvent(this, connection));
 
     if (willDestroy) {
@@ -398,22 +407,15 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
     eachAsync<Connection>(
       this[kConnections].toArray(),
       (conn, cb) => {
-        // Destroy the connection in the case of closing the entire pool
-        // or if the connection matches the service id.
-        if (!options.serviceId || options.serviceId === conn.serviceId) {
-          this.emit(
-            ConnectionPool.CONNECTION_CLOSED,
-            new ConnectionClosedEvent(this, conn, 'poolClosed')
-          );
-          conn.destroy(options, cb);
-        }
+        this.emit(
+          ConnectionPool.CONNECTION_CLOSED,
+          new ConnectionClosedEvent(this, conn, 'poolClosed')
+        );
+        conn.destroy(options, cb);
       },
       err => {
-        // Dont close the entire pool for error on single server.
-        if (!options.serviceId) {
-          this[kConnections].clear();
-          this.emit(ConnectionPool.CONNECTION_POOL_CLOSED, new ConnectionPoolClosedEvent(this));
-        }
+        this[kConnections].clear();
+        this.emit(ConnectionPool.CONNECTION_POOL_CLOSED, new ConnectionPoolClosedEvent(this));
         callback(err);
       }
     );
@@ -462,7 +464,7 @@ function ensureMinPoolSize(pool: ConnectionPool) {
 }
 
 function connectionIsStale(pool: ConnectionPool, connection: Connection) {
-  if (pool.loadBalanced) {
+  if (pool.loadBalanced && connection.serviceId) {
     const generation = pool.serviceGenerations.get(connection.serviceId);
     return generation ? connection.generation !== generation : true;
   }
@@ -508,10 +510,12 @@ function createConnection(pool: ConnectionPool, callback?: Callback<Connection>)
 
     if (pool.loadBalanced) {
       const serviceId = connection.serviceId;
-      createServiceGeneration(pool, serviceId);
-      const generation = pool.serviceGenerations.get(serviceId);
-      if (generation) {
-        connection.generation = generation;
+      if (serviceId) {
+        createServiceGeneration(pool, serviceId);
+        const generation = pool.serviceGenerations.get(serviceId);
+        if (generation) {
+          connection.generation = generation;
+        }
       }
     }
 
@@ -575,6 +579,7 @@ function processWaitQueue(pool: ConnectionPool) {
     const isStale = connectionIsStale(pool, connection);
     const isIdle = connectionIsIdle(pool, connection);
     if (!isStale && !isIdle && !connection.closed) {
+      pool[kCheckedOut] += 1;
       pool.emit(
         ConnectionPool.CONNECTION_CHECKED_OUT,
         new ConnectionCheckedOutEvent(pool, connection)

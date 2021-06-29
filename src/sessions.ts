@@ -27,7 +27,7 @@ import type { MongoOptions } from './mongo_client';
 import { executeOperation } from './operations/execute_operation';
 import { RunAdminCommandOperation } from './operations/run_command';
 import type { AbstractCursor } from './cursor/abstract_cursor';
-import type { CommandOptions } from './cmap/connection';
+import type { CommandOptions, Connection } from './cmap/connection';
 import type { WriteConcern } from './write_concern';
 import { TypedEventEmitter } from './mongo_types';
 
@@ -74,6 +74,8 @@ export type ClientSessionEvents = {
 
 /** @internal */
 const kServerSession = Symbol('serverSession');
+/** @internal */
+const kPinnedConnection = Symbol('pinnedConnection');
 
 /**
  * A class representing a client session on the server
@@ -99,6 +101,8 @@ class ClientSession extends TypedEventEmitter<ClientSessionEvents> {
   loadBalanced: boolean;
   /** @internal */
   [kServerSession]?: ServerSession;
+  /** @internal */
+  [kPinnedConnection]?: Connection;
 
   /**
    * Create a client session.
@@ -144,7 +148,7 @@ class ClientSession extends TypedEventEmitter<ClientSessionEvents> {
     this.owner = options.owner;
     this.loadBalanced = options.loadBalanced;
     this.defaultTransactionOptions = Object.assign({}, options.defaultTransactionOptions);
-    this.transaction = new Transaction();
+    this.transaction = new Transaction({ loadBalanced: options.loadBalanced });
   }
 
   /** The server id associated with this session */
@@ -159,6 +163,28 @@ class ClientSession extends TypedEventEmitter<ClientSessionEvents> {
 
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     return this[kServerSession]!;
+  }
+
+  /** @internal */
+  get pinnedConnection(): Connection | undefined {
+    if (this.transaction.isConnectionPinned) {
+      return this.transaction.pinnedConnection;
+    }
+    return this[kPinnedConnection];
+  }
+
+  /** @internal */
+  pinConnection(conn: Connection): void {
+    if (this.inTransaction()) {
+      this.transaction.pinConnection(conn);
+    } else {
+      this[kPinnedConnection] = conn;
+    }
+  }
+
+  /** @internal */
+  unpinConnection(): void {
+    this[kPinnedConnection] = undefined;
   }
 
   /**
@@ -293,7 +319,8 @@ class ClientSession extends TypedEventEmitter<ClientSessionEvents> {
         options?.readPreference ??
         this.defaultTransactionOptions.readPreference ??
         this.clientOptions?.readPreference,
-      maxCommitTimeMS: options?.maxCommitTimeMS ?? this.defaultTransactionOptions.maxCommitTimeMS
+      maxCommitTimeMS: options?.maxCommitTimeMS ?? this.defaultTransactionOptions.maxCommitTimeMS,
+      loadBalanced: options?.loadBalanced ?? this.loadBalanced
     });
 
     this.transaction.transition(TxnState.STARTING_TRANSACTION);

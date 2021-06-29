@@ -4,6 +4,7 @@ import type { ObjectId } from 'bson';
 import { Logger } from '../logger';
 import { Metrics } from './metrics';
 import { connect } from './connect';
+import type { ClientSession } from '../sessions';
 import { eachAsync, makeCounter, Callback } from '../utils';
 import { MongoDriverError, MongoError } from '../error';
 import { PoolClosedError, WaitQueueTimeoutError } from './errors';
@@ -43,6 +44,8 @@ const kWaitQueue = Symbol('waitQueue');
 const kCancelled = Symbol('cancelled');
 /** @internal */
 const kMetrics = Symbol('metrics');
+/** @internal */
+const kCheckedOut = Symbol('checkedOut');
 
 /** @public */
 export interface ConnectionPoolOptions extends Omit<ConnectionOptions, 'id' | 'generation'> {
@@ -68,7 +71,6 @@ export interface WaitQueueMember {
 /** @public */
 export interface CloseOptions {
   force?: boolean;
-  serviceId?: ObjectId;
 }
 
 /** @public */
@@ -120,6 +122,8 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
   [kWaitQueue]: Denque<WaitQueueMember>;
   /** @internal */
   [kMetrics]: Metrics;
+  /** @internal */
+  [kCheckedOut]: number;
 
   /**
    * Emitted when the connection pool is created.
@@ -205,6 +209,7 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
     this[kCancellationToken].setMaxListeners(Infinity);
     this[kWaitQueue] = new Denque();
     this[kMetrics] = new Metrics();
+    this[kCheckedOut] = 0;
 
     process.nextTick(() => {
       this.emit(ConnectionPool.CONNECTION_POOL_CREATED, new ConnectionPoolCreatedEvent(this));
@@ -242,6 +247,10 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
 
   get serviceGenerations(): Map<ObjectId, number> {
     return this[kServiceGenerations];
+  }
+
+  get currentCheckedOutCount(): number {
+    return this[kCheckedOut];
   }
 
   markPinned(connection: Connection, pinType: string): void {
@@ -301,6 +310,7 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
       }, waitQueueTimeoutMS);
     }
 
+    this[kCheckedOut] = this[kCheckedOut] + 1;
     this[kWaitQueue].push(waitQueueMember);
     process.nextTick(processWaitQueue, this);
   }
@@ -320,6 +330,7 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
       this[kConnections].push(connection);
     }
 
+    this[kCheckedOut] = this[kCheckedOut] - 1;
     this.emit(ConnectionPool.CONNECTION_CHECKED_IN, new ConnectionCheckedInEvent(this, connection));
 
     if (willDestroy) {
@@ -398,22 +409,15 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
     eachAsync<Connection>(
       this[kConnections].toArray(),
       (conn, cb) => {
-        // Destroy the connection in the case of closing the entire pool
-        // or if the connection matches the service id.
-        if (!options.serviceId || options.serviceId === conn.serviceId) {
-          this.emit(
-            ConnectionPool.CONNECTION_CLOSED,
-            new ConnectionClosedEvent(this, conn, 'poolClosed')
-          );
-          conn.destroy(options, cb);
-        }
+        this.emit(
+          ConnectionPool.CONNECTION_CLOSED,
+          new ConnectionClosedEvent(this, conn, 'poolClosed')
+        );
+        conn.destroy(options, cb);
       },
       err => {
-        // Dont close the entire pool for error on single server.
-        if (!options.serviceId) {
-          this[kConnections].clear();
-          this.emit(ConnectionPool.CONNECTION_POOL_CLOSED, new ConnectionPoolClosedEvent(this));
-        }
+        this[kConnections].clear();
+        this.emit(ConnectionPool.CONNECTION_POOL_CLOSED, new ConnectionPoolClosedEvent(this));
         callback(err);
       }
     );
@@ -446,6 +450,50 @@ export class ConnectionPool extends TypedEventEmitter<ConnectionPoolEvents> {
       });
     });
   }
+
+  /**
+   * Runs a lambda with an implicitly checked out connection, checking that connection back in when the lambda
+   * has completed by calling back.
+   *
+   * NOTE: please note the required signature of `fn`
+   *
+   * @param fn - A function which operates on a managed connection
+   * @param callback - The original callback
+   */
+  withPinnedConnection(
+    session: ClientSession,
+    fn: WithConnectionCallback,
+    callback?: Callback<Connection>
+  ): void {
+    const pinnedConnection = session.pinnedConnection;
+    if (!pinnedConnection) {
+      this.checkOut((err, conn) => {
+        if (conn) {
+          executePinned(err as MongoError, conn, fn, callback);
+          session.pinConnection(conn);
+        }
+      });
+    } else {
+      executePinned(undefined, pinnedConnection, fn, callback);
+    }
+  }
+}
+
+function executePinned(
+  error: any,
+  connection: Connection,
+  fn: WithConnectionCallback,
+  callback?: Callback<Connection>
+): void {
+  fn(error, connection, (fnErr, result) => {
+    if (typeof callback === 'function') {
+      if (fnErr) {
+        callback(fnErr);
+      } else {
+        callback(undefined, result);
+      }
+    }
+  });
 }
 
 function ensureMinPoolSize(pool: ConnectionPool) {
@@ -462,9 +510,9 @@ function ensureMinPoolSize(pool: ConnectionPool) {
 }
 
 function connectionIsStale(pool: ConnectionPool, connection: Connection) {
-  if (pool.loadBalanced) {
+  if (pool.loadBalanced && connection.serviceId) {
     const generation = pool.serviceGenerations.get(connection.serviceId);
-    return generation ? connection.generation !== generation : true;
+    return connection.generation !== generation;
   }
   return connection.generation !== pool[kGeneration];
 }
@@ -504,14 +552,16 @@ function createConnection(pool: ConnectionPool, callback?: Callback<Connection>)
       connection.on(event, (e: any) => pool.emit(event, e));
     }
 
-    pool.emit(ConnectionPool.CONNECTION_POOL_CREATED, new ConnectionCreatedEvent(pool, connection));
+    pool.emit(ConnectionPool.CONNECTION_CREATED, new ConnectionCreatedEvent(pool, connection));
 
     if (pool.loadBalanced) {
       const serviceId = connection.serviceId;
-      createServiceGeneration(pool, serviceId);
-      const generation = pool.serviceGenerations.get(serviceId);
-      if (generation) {
-        connection.generation = generation;
+      if (serviceId) {
+        createServiceGeneration(pool, serviceId);
+        const generation = pool.serviceGenerations.get(serviceId);
+        if (generation) {
+          connection.generation = generation;
+        }
       }
     }
 
@@ -537,7 +587,10 @@ function createServiceGeneration(pool: ConnectionPool, serviceId: ObjectId) {
 }
 
 function destroyConnection(pool: ConnectionPool, connection: Connection, reason: string) {
-  pool.emit(ConnectionPool.CONNECTION_CLOSED, new ConnectionClosedEvent(pool, connection, reason));
+  pool.emit(
+    ConnectionPool.CONNECTION_CLOSED,
+    new ConnectionClosedEvent(pool, connection, reason, connection.serviceId)
+  );
 
   // allow more connections to be created
   pool[kPermits]++;

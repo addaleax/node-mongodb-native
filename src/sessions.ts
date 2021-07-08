@@ -581,8 +581,6 @@ function endTransaction(session: ClientSession, commandName: string, callback: C
 
   function commandHandler(e?: MongoError, r?: Document) {
     if (commandName !== 'commitTransaction') {
-      /* eslint no-console: 0 */
-      console.log('lb on session?', session.loadBalanced);
       if (!session.loadBalanced) {
         session.transaction.transition(TxnState.TRANSACTION_ABORTED);
       }
@@ -755,7 +753,12 @@ class ServerSessionPool {
    */
   release(session: ServerSession): void {
     const sessionTimeoutMinutes = this.topology.logicalSessionTimeoutMinutes;
-    if (!sessionTimeoutMinutes || this.topology.loadBalanced) {
+
+    if (this.topology.loadBalanced) {
+      this.sessions.unshift(session);
+    }
+
+    if (!sessionTimeoutMinutes) {
       return;
     }
 

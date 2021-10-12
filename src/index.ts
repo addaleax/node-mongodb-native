@@ -189,7 +189,8 @@ export type {
   CommandOptions,
   QueryOptions,
   GetMoreOptions,
-  ConnectionEvents
+  ConnectionEvents,
+  Socks5Options
 } from './cmap/connection';
 export type { ConnectionPoolMetrics } from './cmap/metrics';
 export type {

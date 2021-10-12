@@ -924,6 +924,10 @@ export const OPTIONS = {
     default: 0,
     type: 'uint'
   },
+  socks5Options: {
+    target: 'socks5Options',
+    type: 'record'
+  },
   ssl: {
     target: 'tls',
     type: 'boolean'

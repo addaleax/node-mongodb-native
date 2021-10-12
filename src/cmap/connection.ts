@@ -114,6 +114,13 @@ export interface GetMoreOptions extends CommandOptions {
 }
 
 /** @public */
+export interface Socks5Options {
+  host: HostAddress | string;
+  username?: string;
+  password?: string;
+}
+
+/** @public */
 export interface ConnectionOptions
   extends SupportedNodeConnectionOptions,
     StreamDescriptionOptions {
@@ -135,6 +142,7 @@ export interface ConnectionOptions
   noDelay?: boolean;
   socketTimeoutMS?: number;
   cancellationToken?: CancellationToken;
+  socks5Options?: Socks5Options;
 
   metadata: ClientMetadata;
 }

@@ -386,10 +386,11 @@ export function parseOptions(
 
   if (mongoOptions.credentials) {
     const isGssapi = mongoOptions.credentials.mechanism === AuthMechanism.MONGODB_GSSAPI;
+    const isOidc = mongoOptions.credentials.mechanism === AuthMechanism.MONGODB_OIDC;
     const isX509 = mongoOptions.credentials.mechanism === AuthMechanism.MONGODB_X509;
     const isAws = mongoOptions.credentials.mechanism === AuthMechanism.MONGODB_AWS;
     if (
-      (isGssapi || isX509) &&
+      (isGssapi || isX509 || isOidc) &&
       allOptions.has('authSource') &&
       mongoOptions.credentials.source !== '$external'
     ) {
@@ -399,7 +400,7 @@ export function parseOptions(
       );
     }
 
-    if (!(isGssapi || isX509 || isAws) && mongoOptions.dbName && !allOptions.has('authSource')) {
+    if (!(isGssapi || isX509 || isAws || isOidc) && mongoOptions.dbName && !allOptions.has('authSource')) {
       // inherit the dbName unless GSSAPI or X509, then silently ignore dbName
       // and there was no specific authSource given
       mongoOptions.credentials = MongoCredentials.merge(mongoOptions.credentials, {

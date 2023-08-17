@@ -1,6 +1,6 @@
-import * as http from 'http';
 import { clearTimeout, setTimeout } from 'timers';
 
+import { http } from '../../utils';
 import { MongoCryptKMSRequestNetworkTimeoutError } from '../errors';
 
 /**
@@ -8,12 +8,12 @@ import { MongoCryptKMSRequestNetworkTimeoutError } from '../errors';
  */
 export function get(
   url: URL | string,
-  options: http.RequestOptions = {}
+  options: import('http').RequestOptions = {}
 ): Promise<{ body: string; status: number | undefined }> {
   return new Promise((resolve, reject) => {
     /* eslint-disable prefer-const */
     let timeoutId: NodeJS.Timeout;
-    const request = http
+    const request = http()
       .get(url, options, response => {
         response.setEncoding('utf8');
         let body = '';

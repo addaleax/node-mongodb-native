@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import { type MongoCryptContext, type MongoCryptKMSRequest } from 'mongodb-client-encryption';
 import * as net from 'net';
-import * as tls from 'tls';
+import { type ConnectionOptions as TLSConnectionOptions } from 'tls';
 
 import {
   type BSONSerializeOptions,
@@ -13,7 +13,7 @@ import {
 import { type ProxyOptions } from '../cmap/connection';
 import { getSocks, type SocksLib } from '../deps';
 import { type MongoClient, type MongoClientOptions } from '../mongo_client';
-import { BufferPool, MongoDBCollectionNamespace } from '../utils';
+import { BufferPool, MongoDBCollectionNamespace, tls } from '../utils';
 import { type DataKey } from './client_encryption';
 import { MongoCryptError } from './errors';
 import { type MongocryptdManager } from './mongocryptd_manager';
@@ -285,7 +285,7 @@ export class StateMachine {
   kmsRequest(request: MongoCryptKMSRequest): Promise<void> {
     const parsedUrl = request.endpoint.split(':');
     const port = parsedUrl[1] != null ? Number.parseInt(parsedUrl[1], 10) : HTTPS_PORT;
-    const options: tls.ConnectionOptions & { host: string; port: number } = {
+    const options: TLSConnectionOptions & { host: string; port: number } = {
       host: parsedUrl[0],
       servername: parsedUrl[0],
       port
@@ -368,7 +368,7 @@ export class StateMachine {
           }
         }
       }
-      socket = tls.connect(options, () => {
+      socket = tls().connect(options, () => {
         socket.write(message);
       });
 
@@ -429,7 +429,7 @@ export class StateMachine {
    */
   async setTlsOptions(
     tlsOptions: ClientEncryptionTlsOptions,
-    options: tls.ConnectionOptions
+    options: TLSConnectionOptions
   ): Promise<void> {
     if (tlsOptions.tlsCertificateKeyFile) {
       const cert = await fs.readFile(tlsOptions.tlsCertificateKeyFile);

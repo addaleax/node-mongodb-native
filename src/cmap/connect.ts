@@ -1,7 +1,6 @@
 import type { Socket, SocketConnectOpts } from 'net';
 import * as net from 'net';
 import type { ConnectionOptions as TLSConnectionOpts, TLSSocket } from 'tls';
-import * as tls from 'tls';
 
 import type { Document } from '../bson';
 import { LEGACY_HELLO_COMMAND } from '../constants';
@@ -16,7 +15,7 @@ import {
   MongoRuntimeError,
   needsRetryableWriteLabel
 } from '../error';
-import { type Callback, HostAddress, ns } from '../utils';
+import { type Callback, HostAddress, ns, tls } from '../utils';
 import { AuthContext, type AuthProvider } from './auth/auth_provider';
 import { GSSAPI } from './auth/gssapi';
 import { MongoCR } from './auth/mongocr';
@@ -357,7 +356,7 @@ function makeConnection(options: MakeConnectionOptions, _callback: Callback<Stre
   }
 
   if (useTLS) {
-    const tlsSocket = tls.connect(parseSslOptions(options));
+    const tlsSocket = tls().connect(parseSslOptions(options));
     if (typeof tlsSocket.disableRenegotiation === 'function') {
       tlsSocket.disableRenegotiation();
     }

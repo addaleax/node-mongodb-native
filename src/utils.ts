@@ -1,6 +1,5 @@
 import * as crypto from 'crypto';
 import type { SrvRecord } from 'dns';
-import * as http from 'http';
 import * as url from 'url';
 import { URL } from 'url';
 
@@ -32,6 +31,15 @@ import type { Server } from './sdam/server';
 import type { Topology } from './sdam/topology';
 import type { ClientSession } from './sessions';
 import { WriteConcern } from './write_concern';
+
+let _http: typeof import('http');
+export function http(): typeof import('http') {
+  return (_http ??= require('http'));
+}
+let _tls: typeof import('tls');
+export function tls(): typeof import('tls') {
+  return (_tls ??= require('tls'));
+}
 
 /**
  * MongoDB Driver style callback
@@ -1232,7 +1240,7 @@ interface RequestOptions {
   json?: boolean;
   method?: string;
   timeout?: number;
-  headers?: http.OutgoingHttpHeaders;
+  headers?: import('http').OutgoingHttpHeaders;
 }
 
 export async function request(uri: string): Promise<Record<string, any>>;
@@ -1257,7 +1265,7 @@ export async function request(
       ...options
     };
 
-    const req = http.request(requestOptions, res => {
+    const req = http().request(requestOptions, res => {
       res.setEncoding('utf8');
 
       let data = '';

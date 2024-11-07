@@ -300,10 +300,7 @@ export class ClientSession
           // release the server session back to the pool
           this.sessionPool.release(serverSession);
           // Make sure a new serverSession never makes it onto this ClientSession
-          Object.defineProperty(this, kServerSession, {
-            value: ServerSession.clone(serverSession),
-            writable: false
-          });
+          this[kServerSession] = ServerSession.clone(serverSession);
         }
         // mark the session as ended, and emit a signal
         this.hasEnded = true;
@@ -1001,8 +998,7 @@ export class ServerSession {
    * after ClientSession has ended
    */
   static clone(serverSession: ServerSession): Readonly<ServerSession> {
-    const arrayBuffer = new ArrayBuffer(16);
-    const idBytes = Buffer.from(arrayBuffer);
+    const idBytes = Buffer.alloc(16);
     idBytes.set(serverSession.id.id.buffer);
 
     const id = new Binary(idBytes, serverSession.id.id.sub_type);

@@ -25,6 +25,7 @@ import {
   getTopology,
   hasAtomicOperators,
   maybeAddIdToDocuments,
+  type MongoDBCollectionNamespace,
   type MongoDBNamespace,
   resolveOptions
 } from '../utils';
@@ -808,6 +809,7 @@ export interface BulkOperationPrivate {
   maxKeySize: number;
   // Namespace
   namespace: MongoDBNamespace;
+  $cmd_ns: MongoDBCollectionNamespace;
   // Topology
   topology: Topology;
   // Options
@@ -976,6 +978,7 @@ export abstract class BulkOperationBase {
       maxKeySize,
       // Namespace
       namespace,
+      $cmd_ns: namespace.withCollection('$cmd'),
       // Topology
       topology,
       // Options

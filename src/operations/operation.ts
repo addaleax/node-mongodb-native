@@ -65,7 +65,7 @@ export abstract class AbstractOperation<TResult = any> {
   options: OperationOptions;
 
   /** Specifies the time an operation will run until it throws a timeout error. */
-  timeoutMS?: number;
+  //timeoutMS?: number;
 
   [kSession]: ClientSession | undefined;
 

@@ -43,7 +43,13 @@ import {
 import { DbStatsOperation, type DbStatsOptions } from './operations/stats';
 import { ReadConcern } from './read_concern';
 import { ReadPreference, type ReadPreferenceLike } from './read_preference';
-import { DEFAULT_PK_FACTORY, filterOptions, MongoDBNamespace, resolveOptions } from './utils';
+import {
+  DEFAULT_PK_FACTORY,
+  filterOptions,
+  type MongoDBCollectionNamespace,
+  MongoDBNamespace,
+  resolveOptions
+} from './utils';
 import { WriteConcern, type WriteConcernOptions } from './write_concern';
 
 // Allowed parameters
@@ -81,6 +87,8 @@ export interface DbPrivate {
   bsonOptions: BSONSerializeOptions;
   writeConcern?: WriteConcern;
   namespace: MongoDBNamespace;
+  $cmd_ns: MongoDBCollectionNamespace;
+  defaultCommandOptions: RunCommandOptions;
 }
 
 /** @public */
@@ -160,6 +168,7 @@ export class Db {
       throw new MongoInvalidArgumentError(`Database names cannot contain the character '.'`);
     }
 
+    const namespace = new MongoDBNamespace(databaseName);
     // Internal state of the db object
     this.s = {
       // Options
@@ -174,7 +183,9 @@ export class Db {
       readConcern: ReadConcern.fromOptions(options),
       writeConcern: WriteConcern.fromOptions(options),
       // Namespace
-      namespace: new MongoDBNamespace(databaseName)
+      namespace,
+      $cmd_ns: namespace.withCollection('$cmd'),
+      defaultCommandOptions: resolveOptions(undefined, { timeoutMS: options?.timeoutMS })
     };
 
     this.client = client;
@@ -280,12 +291,14 @@ export class Db {
       new RunCommandOperation(
         this,
         command,
-        resolveOptions(undefined, {
-          ...resolveBSONOptions(options),
-          timeoutMS: options?.timeoutMS ?? this.timeoutMS,
-          session: options?.session,
-          readPreference: options?.readPreference
-        })
+        options
+          ? resolveOptions(undefined, {
+              ...resolveBSONOptions(options),
+              timeoutMS: options?.timeoutMS ?? this.timeoutMS,
+              session: options?.session,
+              readPreference: options?.readPreference
+            })
+          : this.s.defaultCommandOptions
       )
     );
   }

@@ -55,6 +55,7 @@ import {
   type HostAddress,
   hostMatchesWildcards,
   isHostMatch,
+  type MongoDBCollectionNamespace,
   type MongoDBNamespace,
   ns,
   resolveOptions,
@@ -310,6 +311,7 @@ export interface MongoClientPrivate {
   url: string;
   bsonOptions: BSONSerializeOptions;
   namespace: MongoDBNamespace;
+  $cmd_ns: MongoDBCollectionNamespace;
   hasBeenClosed: boolean;
   authProviders: MongoClientAuthProviders;
   /**
@@ -391,6 +393,7 @@ export class MongoClient extends TypedEventEmitter<MongoClientEvents> implements
       url,
       bsonOptions: resolveBSONOptions(this[kOptions]),
       namespace: ns('admin'),
+      $cmd_ns: ns('admin').withCollection('$cmd'),
       hasBeenClosed: false,
       sessionPool: new ServerSessionPool(this),
       activeSessions: new Set(),

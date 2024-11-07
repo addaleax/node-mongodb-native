@@ -354,7 +354,7 @@ export class Connection extends TypedEventEmitter<ConnectionEvents> {
   }
 
   private prepareCommand(db: string, command: Document, options: CommandOptions) {
-    let cmd = { ...command };
+    let cmd: Document = { ...command };
 
     const readPreference = getReadPreference(options);
     const session = options?.session;

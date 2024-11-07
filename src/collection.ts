@@ -128,6 +128,7 @@ export interface CollectionPrivate {
   db: Db;
   options: any;
   namespace: MongoDBCollectionNamespace;
+  $cmd_ns: MongoDBCollectionNamespace;
   readPreference?: ReadPreference;
   bsonOptions: BSONSerializeOptions;
   collectionHint?: Hint;
@@ -173,11 +174,14 @@ export class Collection<TSchema extends Document = Document> {
    * @internal
    */
   constructor(db: Db, name: string, options?: CollectionOptions) {
+    const namespace = new MongoDBCollectionNamespace(db.databaseName, name);
     // Internal state
     this.s = {
       db,
       options,
-      namespace: new MongoDBCollectionNamespace(db.databaseName, name),
+      namespace,
+
+      $cmd_ns: namespace.withCollection('$cmd'),
       pkFactory: db.options?.pkFactory ?? DEFAULT_PK_FACTORY,
       readPreference: ReadPreference.fromOptions(options),
       bsonOptions: resolveBSONOptions(options, db),

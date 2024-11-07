@@ -13,7 +13,12 @@ import type { Server } from '../sdam/server';
 import { MIN_SECONDARY_WRITE_WIRE_VERSION } from '../sdam/server_selection';
 import type { ClientSession } from '../sessions';
 import { type TimeoutContext } from '../timeout';
-import { commandSupportsReadConcern, maxWireVersion, MongoDBNamespace } from '../utils';
+import {
+  commandSupportsReadConcern,
+  maxWireVersion,
+  type MongoDBCollectionNamespace,
+  MongoDBNamespace
+} from '../utils';
 import { WriteConcern, type WriteConcernOptions } from '../write_concern';
 import type { ReadConcernLike } from './../read_concern';
 import { AbstractOperation, Aspect, type OperationOptions } from './operation';
@@ -64,7 +69,7 @@ export interface CommandOperationOptions
 
 /** @internal */
 export interface OperationParent {
-  s: { namespace: MongoDBNamespace };
+  s: { namespace: MongoDBNamespace; $cmd_ns: MongoDBCollectionNamespace };
   readConcern?: ReadConcern;
   writeConcern?: WriteConcern;
   readPreference?: ReadPreference;
@@ -90,9 +95,7 @@ export abstract class CommandOperation<T> extends AbstractOperation<T> {
     if (dbNameOverride) {
       this.ns = new MongoDBNamespace(dbNameOverride, '$cmd');
     } else {
-      this.ns = parent
-        ? parent.s.namespace.withCollection('$cmd')
-        : new MongoDBNamespace('admin', '$cmd');
+      this.ns = parent ? parent.s.$cmd_ns : new MongoDBNamespace('admin', '$cmd');
     }
 
     this.readConcern = ReadConcern.fromOptions(options);

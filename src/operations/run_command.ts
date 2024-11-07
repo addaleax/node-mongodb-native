@@ -32,7 +32,7 @@ export class RunCommandOperation<T = Document> extends AbstractOperation<T> {
     public override options: RunCommandOptions & { responseType?: MongoDBResponseConstructor }
   ) {
     super(options);
-    this.ns = parent.s.namespace.withCollection('$cmd');
+    this.ns = parent.s.$cmd_ns;
   }
 
   override get commandName() {

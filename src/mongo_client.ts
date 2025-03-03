@@ -367,14 +367,13 @@ export class MongoClient extends TypedEventEmitter<MongoClientEvents> implements
 
   /**
    * The consolidate, parsed, transformed and merged options.
-   * @internal
    */
-  [kOptions]: MongoOptions;
-  get options(): MongoOptions {
-    return this[kOptions]
+  options: MongoOptions;
+  get [kOptions](): MongoOptions {
+    return this.options
   }
-  set options(o: MongoOptions) {
-    this[kOptions] = o
+  set [kOptions](o: MongoOptions) {
+    this.options = o
   }
 
   constructor(url: string, options?: MongoClientOptions) {

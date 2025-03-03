@@ -370,6 +370,12 @@ export class MongoClient extends TypedEventEmitter<MongoClientEvents> implements
    * @internal
    */
   [kOptions]: MongoOptions;
+  get options(): MongoOptions {
+    return this[kOptions]
+  }
+  set options(o: MongoOptions) {
+    this[kOptions] = o
+  }
 
   constructor(url: string, options?: MongoClientOptions) {
     super();
@@ -445,10 +451,10 @@ export class MongoClient extends TypedEventEmitter<MongoClientEvents> implements
     }
   }
 
-  /** @see MongoOptions */
-  get options(): Readonly<MongoOptions> {
-    return /*Object.freeze(*/{ ...this[kOptions] }//);
-  }
+  // /** @see MongoOptions */
+  //get options(): Readonly<MongoOptions> {
+  //  return /*Object.freeze(*/{ ...this[kOptions] }//);
+  //}
 
   get serverApi(): Readonly<ServerApi | undefined> {
     return this[kOptions].serverApi && Object.freeze({ ...this[kOptions].serverApi });

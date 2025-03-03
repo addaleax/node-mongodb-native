@@ -42,6 +42,9 @@ export interface OperationOptions extends BSONSerializeOptions {
   timeoutMS?: number;
 }
 
+/** @internal */
+const kSession = Symbol('session');
+
 /**
  * This class acts as a parent class for any operation and is responsible for setting this.options,
  * as well as setting and getting a session.
@@ -64,7 +67,7 @@ export abstract class AbstractOperation<TResult = any> {
   /** Specifies the time an operation will run until it throws a timeout error. */
   timeoutMS?: number;
 
-  private _session: ClientSession | undefined;
+  [kSession]: ClientSession | undefined;
 
   static aspects?: Set<symbol>;
 
@@ -76,7 +79,7 @@ export abstract class AbstractOperation<TResult = any> {
     // Pull the BSON serialize options from the already-resolved options
     this.bsonOptions = resolveBSONOptions(options);
 
-    this._session = options.session != null ? options.session : undefined;
+    this[kSession] = options.session != null ? options.session : undefined;
 
     this.options = options;
     this.bypassPinningCheck = !!options.bypassPinningCheck;
@@ -102,13 +105,12 @@ export abstract class AbstractOperation<TResult = any> {
     return ctor.aspects.has(aspect);
   }
 
-  // Make sure the session is not writable from outside this class.
   get session(): ClientSession | undefined {
-    return this._session;
+    return this[kSession];
   }
 
   clearSession() {
-    this._session = undefined;
+    this[kSession] = undefined;
   }
 
   resetBatch(): boolean {

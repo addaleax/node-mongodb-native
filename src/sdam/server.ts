@@ -22,6 +22,7 @@ import {
 } from '../constants';
 import {
   type AnyError,
+  isNetworkErrorBeforeHandshake,
   isNodeShuttingDownError,
   isSDAMUnrecoverableError,
   MONGODB_ERROR_CODES,
@@ -380,8 +381,7 @@ export class Server extends TypedEventEmitter<ServerEvents> {
 
     const isNetworkNonTimeoutError =
       error instanceof MongoNetworkError && !(error instanceof MongoNetworkTimeoutError);
-    const isNetworkTimeoutBeforeHandshakeError =
-      error instanceof MongoNetworkError && error.beforeHandshake;
+    const isNetworkTimeoutBeforeHandshakeError = isNetworkErrorBeforeHandshake(error);
     const isAuthHandshakeError = error.hasErrorLabel(MongoErrorLabel.HandshakeError);
     if (isNetworkNonTimeoutError || isNetworkTimeoutBeforeHandshakeError || isAuthHandshakeError) {
       // In load balanced mode we never mark the server as unknown and always

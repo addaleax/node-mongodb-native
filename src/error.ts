@@ -10,6 +10,9 @@ import type { TopologyDescription } from './sdam/topology_description';
 /** @public */
 export type AnyError = MongoError | Error;
 
+/** @internal */
+const kErrorLabels = Symbol('errorLabels');
+
 /**
  * @internal
  * The legacy error message from the server that indicates the node is not a writable primary
@@ -126,11 +129,7 @@ function isAggregateError(e: unknown): e is Error & { errors: Error[] } {
  */
 export class MongoError extends Error {
   /** @internal */
-  private readonly errorLabelSet: Set<string> = new Set();
-  public get errorLabels(): string[] {
-    return Array.from(this.errorLabelSet);
-  }
-
+  [kErrorLabels]: Set<string>;
   /**
    * This is a number in MongoServerError and a string in MongoDriverError
    * @privateRemarks
@@ -154,6 +153,7 @@ export class MongoError extends Error {
    **/
   constructor(message: string, options?: { cause?: Error }) {
     super(message, options);
+    this[kErrorLabels] = new Set();
   }
 
   /** @internal */
@@ -188,11 +188,15 @@ export class MongoError extends Error {
    * @returns returns true if the error has the provided error label
    */
   hasErrorLabel(label: string): boolean {
-    return this.errorLabelSet.has(label);
+    return this[kErrorLabels].has(label);
   }
 
   addErrorLabel(label: string): void {
-    this.errorLabelSet.add(label);
+    this[kErrorLabels].add(label);
+  }
+
+  get errorLabels(): string[] {
+    return Array.from(this[kErrorLabels]);
   }
 }
 
@@ -224,9 +228,8 @@ export class MongoServerError extends MongoError {
    **/
   constructor(message: ErrorDescription) {
     super(message.message || message.errmsg || message.$err || 'n/a');
-
     if (message.errorLabels) {
-      for (const label of message.errorLabels) this.addErrorLabel(label);
+      this[kErrorLabels] = new Set(message.errorLabels);
     }
 
     this.errorResponse = message;
@@ -1025,6 +1028,12 @@ export class MongoTopologyClosedError extends MongoAPIError {
   }
 }
 
+/** @internal */
+const kBeforeHandshake = Symbol('beforeHandshake');
+export function isNetworkErrorBeforeHandshake(err: MongoNetworkError): boolean {
+  return err[kBeforeHandshake] === true;
+}
+
 /** @public */
 export interface MongoNetworkErrorOptions {
   /** Indicates the timeout happened before a connection handshake completed */
@@ -1039,7 +1048,7 @@ export interface MongoNetworkErrorOptions {
  */
 export class MongoNetworkError extends MongoError {
   /** @internal */
-  public readonly beforeHandshake: boolean;
+  [kBeforeHandshake]?: boolean;
 
   /**
    * **Do not use this constructor!**
@@ -1054,7 +1063,10 @@ export class MongoNetworkError extends MongoError {
    **/
   constructor(message: string, options?: MongoNetworkErrorOptions) {
     super(message, { cause: options?.cause });
-    this.beforeHandshake = !!options?.beforeHandshake;
+
+    if (options && typeof options.beforeHandshake === 'boolean') {
+      this[kBeforeHandshake] = options.beforeHandshake;
+    }
   }
 
   override get name(): string {
